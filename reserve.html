@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>予約フォーム</title>
+
+  <!-- flatpickr 読み込み -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+  <style>
+    body {
+      font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: #FFFFFF;
+      padding: 30px;
+      color: #000000;
+    }
+
+    .container {
+      max-width: 480px;
+      margin: auto;
+      background: #FFFFFF;
+      padding: 25px;
+      border-radius: 12px;
+      border: 2px solid #000000;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #000000;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 5px;
+      color: #000000;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 2px solid #000000;
+      border-radius: 6px;
+      background: #FFFFFF;
+      color: #000000;
+      box-sizing: border-box;
+    }
+
+    #endTimeDisplay {
+      font-size: 18px;
+      font-weight: bold;
+      padding: 8px 0;
+      color: #000000;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 25px;
+      font-size: 18px;
+      background: #FF0000;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #CC0000;
+    }
+
+    #result {
+      margin-top: 20px;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+      color: #FF0000;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>予約フォーム</h2>
+
+  <label>予約種別</label>
+  <select id="reservationType" onchange="setupCalendar(); updateTimeOptions();"></select>
+
+  <label>日付</label>
+  <input type="text" id="date" readonly>
+
+  <label>開始時間</label>
+  <select id="startTime" onchange="updateDurationOptions(); updateEndTime();"></select>
+
+  <label id="durationLabel" style="display:none;">利用時間</label>
+  <select id="duration" style="display:none;" onchange="updateEndTime();"></select>
+
+  <label id="endLabel" style="display:none;">終了時間</label>
+  <div id="endTimeDisplay"></div>
+
+  <button onclick="reserve()">予約する</button>
+
+  <p id="result"></p>
+</div>
+<script>
+const API_BASE = "https://jmagic-fastapi.onrender.com";
+let fp = null;
+
+// 予約種別を読み込む
+async function loadTypes() {
+  const res = await fetch(`${API_BASE}/reservation-types`);
+  const data = await res.json();
+
+  const select = document.getElementById("reservationType");
+  data.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name;
+    select.appendChild(opt);
+  });
+
+  setupCalendar();
+  updateTimeOptions();
+}
+
+// flatpickr カレンダー設定
+function setupCalendar() {
+  const typeId = Number(document.getElementById("reservationType").value);
+
+  if (fp) fp.destroy();
+
+  fp = flatpickr("#date", {
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    disable: [
+      function(date) {
+        const w = date.getDay();
+
+        if (typeId === 4) return w === 3;          // 銃器保管：水曜不可
+        if (typeId === 1 || typeId === 2) return w === 3; // AR/AP・BR：水曜不可
+        if (typeId === 3) return ![2,4,6].includes(w);    // 射撃教室：火木土のみ
+
+        return false;
+      }
+    ],
+    onChange: function() {
+      updateTimeOptions();
+    }
+  });
+}
+
+// 時間プルダウン更新
+function updateTimeOptions() {
+  const typeId = Number(document.getElementById("reservationType").value);
+  const date = document.getElementById("date").value;
+  const weekday = date ? new Date(date).getDay() : null;
+
+  const startSelect = document.getElementById("startTime");
+  const durationSelect = document.getElementById("duration");
+  const durationLabel = document.getElementById("durationLabel");
+  const endLabel = document.getElementById("endLabel");
+  const endDisplay = document.getElementById("endTimeDisplay");
+
+  startSelect.innerHTML = "";
+  durationSelect.innerHTML = "";
+  endDisplay.textContent = "";
+
+  // 利用時間の表示制御（AR/AP・BRのみ）
+  if (typeId === 1 || typeId === 2) {
+    durationSelect.style.display = "block";
+    durationLabel.style.display = "block";
+    endLabel.style.display = "block";
+  } else {
+    durationSelect.style.display = "none";
+    durationLabel.style.display = "none";
+    endLabel.style.display = "none";
+  }
+
+  // 銃器保管（ID=4）
+  if (typeId === 4) {
+    generateTimes(startSelect, 10, 20, true); // 20:30まで生成
+    return;
+  }
+
+  // AR/AP・BR（ID=1,2）
+  if (typeId === 1 || typeId === 2) {
+    if ([1,2,4,5].includes(weekday)) {
+      generateTimes(startSelect, 16, 20, false); // 平日 → 20:00まで（20:30削除）
+    } else if ([0,6].includes(weekday)) {
+      generateTimes(startSelect, 10, 20, false); // 土日 → 20:00まで（20:30削除）
+    }
+    return;
+  }
+
+  // 射撃教室（ID=3）
+  if (typeId === 3) {
+    generateFixedTimes(startSelect, ["16:00", "17:00", "18:00"]);
+    return;
+  }
+}
+
+// 利用時間の選択肢を動的に生成（AR/AP・BR）
+function updateDurationOptions() {
+  const typeId = Number(document.getElementById("reservationType").value);
+  const start = document.getElementById("startTime").value;
+  const durationSelect = document.getElementById("duration");
+
+  durationSelect.innerHTML = "";
+
+  if (!(typeId === 1 || typeId === 2)) return;
+  if (!start) return;
+
+  const [h, m] = start.split(":").map(Number);
+  const startMinutes = h * 60 + m;
+  const closeMinutes = 21 * 60; // 21:00
+
+  for (let hours = 1; hours <= 5; hours++) {
+    const endMinutes = startMinutes + hours * 60;
+    if (endMinutes <= closeMinutes) {
+      const opt = document.createElement("option");
+      opt.value = hours;
+      opt.textContent = `${hours}時間`;
+      durationSelect.appendChild(opt);
+    }
+  }
+}
+
+// 終了時間を自動計算（AR/AP・BRのみ）
+function updateEndTime() {
+  const typeId = Number(document.getElementById("reservationType").value);
+  const start = document.getElementById("startTime").value;
+  const duration = Number(document.getElementById("duration").value);
+  const endDisplay = document.getElementById("endTimeDisplay");
+
+  if (!(typeId === 1 || typeId === 2)) return;
+  if (!start || !duration) return;
+
+  const [h, m] = start.split(":").map(Number);
+  const endHour = h + duration;
+
+  endDisplay.textContent = `${String(endHour).padStart(2, "0")}:${m === 0 ? "00" : "30"}`;
+}
+
+// 30分刻み時間生成
+function generateTimes(select, startHour, endHour, include2030) {
+  for (let h = startHour; h <= endHour; h++) {
+    for (let m of ["00", "30"]) {
+
+      // AR/AP・BR の場合は 20:30 を除外
+      if (!include2030 && h === 20 && m === "30") continue;
+
+      const time = `${String(h).padStart(2, "0")}:${m}`;
+      const opt = document.createElement("option");
+      opt.value = time;
+      opt.textContent = time;
+      select.appendChild(opt);
+    }
+  }
+}
+
+// 固定時間生成（射撃教室）
+function generateFixedTimes(select, times) {
+  times.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t;
+    select.appendChild(opt);
+  });
+}
+
+// 予約送信
+async function reserve() {
+  const typeId = Number(document.getElementById("reservationType").value);
+  const date = document.getElementById("date").value;
+  const start = document.getElementById("startTime").value;
+  const end = document.getElementById("endTimeDisplay").textContent;
+
+  const startDatetime = `${date} ${start}`;
+  const endDatetime = end ? `${date} ${end}` : null;
+
+  const token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJuYW1lIjoiXHUzMGM2XHUzMGI5XHUzMGM4XHU1OTJhXHU5MGNlIiwiZXhwIjoxNzgyNjE4NDgyfQ.4rH2neL3oxnoUim6sOlhuwvF8Z0Hz5d4rQ7CMnhvIKE";
+
+  const res = await fetch(`${API_BASE}/reserve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": token
+    },
+    body: JSON.stringify({
+      reservation_type_id: typeId,
+      start_datetime: startDatetime,
+      end_datetime: endDatetime
+    })
+  });
+
+  const result = document.getElementById("result");
+
+  if (res.ok) {
+    result.style.color = "#00AA00";
+    result.textContent = "予約が完了しました！";
+  } else {
+    const err = await res.json();
+    result.style.color = "#FF0000";
+    result.textContent = "エラー：" + err.detail;
+  }
+}
+
+// 初期化
+loadTypes();
+</script>
+
+</body>
+</html>

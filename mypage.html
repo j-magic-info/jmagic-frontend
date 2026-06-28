@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>マイページ</title>
+
+  <style>
+    body {
+      font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: #FFFFFF;
+      padding: 30px;
+      color: #000000;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: #FFFFFF;
+      padding: 25px;
+      border-radius: 12px;
+      border: 2px solid #000000;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #000000;
+    }
+
+    h3 {
+      margin-top: 30px;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 5px;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+      margin-bottom: 5px;
+    }
+
+    input[type="text"], input[type="tel"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 2px solid #000000;
+      border-radius: 6px;
+      background: #FFFFFF;
+      color: #000000;
+      box-sizing: border-box;
+    }
+
+    .reservation-box {
+      border: 2px solid #000000;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+
+    .cancel-btn {
+      background: #FF0000;
+      color: #FFFFFF;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    .cancel-btn:hover {
+      background: #CC0000;
+    }
+
+    .save-btn {
+      background: #000000;
+      color: #FFFFFF;
+      border: none;
+      padding: 10px;
+      width: 100%;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    .save-btn:hover {
+      background: #333333;
+    }
+
+    .logout-btn {
+      background: #FFFFFF;
+      color: #000000;
+      border: 2px solid #000000;
+      padding: 10px;
+      width: 100%;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    .logout-btn:hover {
+      background: #F0F0F0;
+    }
+
+    #result {
+      margin-top: 20px;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+      color: #FF0000;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>マイページ</h2>
+
+  <h3>会員情報</h3>
+
+  <label>ログインID（メールアドレス）</label>
+  <input type="text" id="loginId" disabled>
+
+  <label>利用者氏名</label>
+  <input type="text" id="name">
+
+  <label>電話番号</label>
+  <input type="tel" id="phone">
+
+  <button class="save-btn" onclick="updateUser()">会員情報を保存</button>
+
+  <h3>予約一覧</h3>
+  <div id="reservations"></div>
+
+  <button class="logout-btn" onclick="logout()">ログアウト</button>
+
+  <p id="result"></p>
+</div>
+<script>
+const API_BASE = "https://jmagic-fastapi.onrender.com";
+
+// JWT取得
+const token = localStorage.getItem("access_token");
+if (!token) {
+  alert("ログインしてください。");
+  window.location.href = "login.html";
+}
+
+// 会員情報読み込み
+async function loadUserInfo() {
+  const res = await fetch(`${API_BASE}/me`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+
+  const data = await res.json();
+
+  document.getElementById("loginId").value = data.login_id;
+  document.getElementById("name").value = data.name;
+  document.getElementById("phone").value = data.phone;
+}
+
+// 会員情報更新
+async function updateUser() {
+  const name = document.getElementById("name").value;
+  const phone = document.getElementById("phone").value;
+  const result = document.getElementById("result");
+
+  const res = await fetch(`${API_BASE}/update-user`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({ name, phone })
+  });
+
+  if (res.ok) {
+    result.style.color = "#00AA00";
+    result.textContent = "会員情報を更新しました。";
+  } else {
+    const err = await res.json();
+    result.style.color = "#FF0000";
+    result.textContent = "更新失敗：" + err.detail;
+  }
+}
+
+// 予約一覧読み込み
+async function loadReservations() {
+  const res = await fetch(`${API_BASE}/my-reservations`, {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+
+  const data = await res.json();
+  const box = document.getElementById("reservations");
+  box.innerHTML = "";
+
+  data.forEach(r => {
+    const div = document.createElement("div");
+    div.className = "reservation-box";
+
+    div.innerHTML = `
+      <div><b>予約種別：</b> ${r.reservation_type_name}</div>
+      <div><b>開始：</b> ${r.start_datetime}</div>
+      <div><b>終了：</b> ${r.end_datetime ?? "（固定時間）"}</div>
+      <button class="cancel-btn" onclick="cancelReservation(${r.id})">キャンセル</button>
+    `;
+
+    box.appendChild(div);
+  });
+}
+
+// 予約キャンセル
+async function cancelReservation(id) {
+  if (!confirm("本当にキャンセルしますか？")) return;
+
+  const res = await fetch(`${API_BASE}/cancel-reservation/${id}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+
+  if (res.ok) {
+    alert("予約をキャンセルしました。");
+    loadReservations();
+  } else {
+    alert("キャンセルに失敗しました。");
+  }
+}
+
+// ログアウト
+function logout() {
+  localStorage.removeItem("access_token");
+  window.location.href = "login.html";
+}
+
+// 初期化
+loadUserInfo();
+loadReservations();
+</script>
+
+</body>
+</html>
