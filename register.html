@@ -129,11 +129,13 @@
 <script>
 const API_BASE = "https://jmagic-fastapi.onrender.com";
 
+// パスワード表示切替
 function togglePassword(id) {
   const input = document.getElementById(id);
   input.type = input.type === "password" ? "text" : "password";
 }
 
+// 会員登録処理
 async function registerUser() {
   const loginId = document.getElementById("loginId").value;
   const password = document.getElementById("password").value;
@@ -146,21 +148,35 @@ async function registerUser() {
     return;
   }
 
-  const res = await fetch(`${API_BASE}/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ login_id: loginId, password, name, phone })
-  });
+  try {
+    const res = await fetch(`${API_BASE}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        login_id: loginId,
+        password: password,
+        name: name,
+        phone: phone
+      })
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (res.ok) {
-    result.style.color = "#00AA00";
-    result.textContent = "登録が完了しました！ログイン画面へ移動します。";
-    setTimeout(() => window.location.href = "login.html", 1200);
-  } else {
-    result.style.color = "#FF0000";
-    result.textContent = "登録失敗：" + JSON.stringify(data.detail);
+    if (res.ok && data.success) {
+      result.style.color = "#00AA00";
+      result.textContent = "登録が完了しました！ログイン画面へ移動します。";
+
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 1200);
+
+    } else {
+      result.style.color = "#FF0000";
+      result.textContent = "登録失敗：" + JSON.stringify(data.detail || data.message);
+    }
+
+  } catch (error) {
+    result.textContent = "通信エラー：" + error;
   }
 }
 </script>
