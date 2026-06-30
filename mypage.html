@@ -26,58 +26,37 @@
       margin-bottom: 20px;
     }
 
-    label {
-      font-weight: bold;
-      display: block;
-      margin-top: 15px;
-      margin-bottom: 5px;
-    }
-
-    input[type="text"], input[type="tel"] {
-      width: 100%;
-      padding: 12px;
-      font-size: 16px;
-      border: 2px solid #000000;
-      border-radius: 6px;
-      background: #FFFFFF;
-      color: #000000;
-      box-sizing: border-box;
-    }
-
-    button {
-      width: 100%;
-      padding: 14px;
-      margin-top: 20px;
-      font-size: 18px;
-      background: #FF0000;
-      color: #FFFFFF;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-
-    button:hover {
-      background: #CC0000;
-    }
-
-    .small-btn {
-      background: #FFFFFF;
-      color: #000000;
-      border: 2px solid #000000;
-      margin-top: 10px;
-    }
-
-    .small-btn:hover {
-      background: #F0F0F0;
-    }
-
     .section-title {
       margin-top: 30px;
       font-size: 20px;
       font-weight: bold;
       border-bottom: 2px solid #000000;
       padding-bottom: 5px;
+    }
+
+    #userInfoBox {
+      border: 1px solid #000;
+      padding: 12px;
+      border-radius: 6px;
+      background: #F9F9F9;
+      margin-top: 10px;
+    }
+
+    .small-btn {
+      background: #FFFFFF;
+      color: #000000;
+      border: 2px solid #000000;
+      margin-top: 15px;
+      padding: 12px;
+      width: 100%;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .small-btn:hover {
+      background: #F0F0F0;
     }
 
     .reservation-item {
@@ -115,16 +94,17 @@
 <div class="container">
   <h2>マイページ</h2>
 
-  <!-- 会員情報 -->
+  <!-- 会員情報（表示のみ） -->
   <div class="section-title">会員情報</div>
 
-  <label>氏名</label>
-  <input type="text" id="name">
+  <div id="userInfoBox">
+    <div><strong>氏名：</strong> <span id="nameDisplay"></span></div>
+    <div><strong>電話番号：</strong> <span id="phoneDisplay"></span></div>
+  </div>
 
-  <label>電話番号</label>
-  <input type="tel" id="phone">
-
-  <button onclick="updateUser()">会員情報を更新する</button>
+  <button class="small-btn" onclick="location.href='edit_profile.html'">
+    会員情報を変更する
+  </button>
 
   <button class="small-btn" onclick="location.href='reserve.html'">
     予約フォームへ進む
@@ -143,8 +123,6 @@
 
 <script>
 const API_BASE = "https://jmagic-fastapi.onrender.com";
-
-// ★ login.html が保存した access_token を正しく取得
 const token = localStorage.getItem("access_token");
 
 // 認証チェック
@@ -153,7 +131,7 @@ if (!token) {
   location.href = "login.html";
 }
 
-// 会員情報読み込み
+// 会員情報読み込み（表示のみ）
 async function loadUser() {
   const res = await fetch(`${API_BASE}/me`, {
     headers: { "Authorization": `Bearer ${token}` }
@@ -166,26 +144,8 @@ async function loadUser() {
   }
 
   const data = await res.json();
-  document.getElementById("name").value = data.name;
-  document.getElementById("phone").value = data.phone;
-}
-
-// 会員情報更新
-async function updateUser() {
-  const name = document.getElementById("name").value;
-  const phone = document.getElementById("phone").value;
-
-  const res = await fetch(`${API_BASE}/me`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-    body: JSON.stringify({ name, phone })
-  });
-
-  const data = await res.json();
-  document.getElementById("result").textContent = data.message || "更新しました！";
+  document.getElementById("nameDisplay").textContent = data.name;
+  document.getElementById("phoneDisplay").textContent = data.phone;
 }
 
 // 予約一覧読み込み
