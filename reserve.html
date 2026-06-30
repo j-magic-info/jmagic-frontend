@@ -115,15 +115,23 @@ if (!token) {
   window.location.href = "login.html";
 }
 
-// 予約種別を読み込む
+// 予約種別を読み込む（★ Authorization を追加）
 async function loadReservationTypes() {
   const select = document.getElementById("reservationType");
   select.innerHTML = "<option>読み込み中...</option>";
 
   try {
-    const res = await fetch(`${API_BASE}/reservation-types`);
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/reservation-types`, {
+      headers: {
+        "Authorization": "Bearer " + token
+      }
+    });
 
+    if (!res.ok) {
+      throw new Error("APIエラー");
+    }
+
+    const data = await res.json();
     select.innerHTML = "";
 
     data.forEach(type => {
@@ -134,6 +142,7 @@ async function loadReservationTypes() {
     });
 
   } catch (error) {
+    console.error(error);
     select.innerHTML = "<option>読み込み失敗</option>";
   }
 }
@@ -150,7 +159,6 @@ async function reserve() {
     return;
   }
 
-  // datetime-local → API のフォーマットへ変換
   const startFormatted = start.replace("T", " ");
   const endFormatted = end.replace("T", " ");
 
