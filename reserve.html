@@ -48,6 +48,12 @@
       box-sizing: border-box;
     }
 
+    .end-time-display {
+      font-weight: bold;
+      font-size: 18px;
+      padding: 8px 0;
+    }
+
     button {
       width: 100%;
       padding: 14px;
@@ -99,8 +105,11 @@
   <label id="startLabel">開始時刻</label>
   <select id="startTime"></select>
 
-  <label id="durationLabel">利用時間（AR/AP・BRのみ）</label>
+  <label id="durationLabel">利用時間</label>
   <select id="durationSelect"></select>
+
+  <label id="endLabel">終了時刻</label>
+  <div id="endTimeDisplay" class="end-time-display"></div>
 
   <button onclick="reserve()">予約する</button>
 
@@ -119,29 +128,6 @@ const token = localStorage.getItem("access_token");
 
 if (!token) {
   location.href = "login.html";
-}
-
-// 日付選択（水曜のみ休み）
-flatpickr("#datePicker", {
-  dateFormat: "Y-m-d",
-  minDate: "today",
-  disable: [
-    function(date) {
-      return date.getDay() === 3; // 水曜休み
-    }
-  ]
-});
-
-// 30分刻みの時間リスト生成
-function generateTimes(startHour, endHour, include2030=false) {
-  const times = [];
-  for (let h = startHour; h <= endHour; h++) {
-    ["00", "30"].forEach(m => {
-      if (h === 20 && m === "30" && !include2030) return;
-      times.push(`${String(h).padStart(2,"0")}:${m}`);
-    });
-  }
-  return times;
 }
 
 // 予約種別読み込み
@@ -167,21 +153,60 @@ async function loadReservationTypes() {
   applyRules();
 }
 
+// 日付選択（種別によって休みを変える）
+function setupCalendar(typeId) {
+  flatpickr("#datePicker", {
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    disable: [
+      function(date) {
+        if (typeId === 3) {
+          // 教室：火(2)・木(4)・土(6)のみ営業
+          return ![2,4,6].includes(date.getDay());
+        } else {
+          // 他：水曜休み
+          return date.getDay() === 3;
+        }
+      }
+    ]
+  });
+}
+
+// 30分刻みの時間リスト生成
+function generateTimes(startHour, endHour, include2030=false) {
+  const times = [];
+  for (let h = startHour; h <= endHour; h++) {
+    ["00", "30"].forEach(m => {
+      if (h === 20 && m === "30" && !include2030) return;
+      times.push(`${String(h).padStart(2,"0")}:${m}`);
+    });
+  }
+  return times;
+}
+
 // 種別ごとのルール適用
 function applyRules() {
   const typeId = Number(document.getElementById("reservationType").value);
   const startTime = document.getElementById("startTime");
   const durationSelect = document.getElementById("durationSelect");
   const durationLabel = document.getElementById("durationLabel");
+  const endLabel = document.getElementById("endLabel");
+  const endTimeDisplay = document.getElementById("endTimeDisplay");
 
   startTime.innerHTML = "";
   durationSelect.innerHTML = "";
+  endTimeDisplay.textContent = "";
+
   durationSelect.style.display = "none";
   durationLabel.style.display = "none";
+  endLabel.style.display = "none";
+  endTimeDisplay.style.display = "none";
+
+  setupCalendar(typeId);
 
   if (typeId === 1 || typeId === 2) {
     // AR/AP・BR
-    const startList = generateTimes(10, 20, false); // 20:00が最終
+    const startList = generateTimes(10, 20, false);
     startList.forEach(t => {
       const opt = document.createElement("option");
       opt.value = t;
@@ -191,12 +216,13 @@ function applyRules() {
 
     durationSelect.style.display = "block";
     durationLabel.style.display = "block";
-    for (let h = 1; h <= 5; h++) {
-      const opt = document.createElement("option");
-      opt.value = h;
-      opt.textContent = `${h}時間`;
-      durationSelect.appendChild(opt);
-    }
+    endLabel.style.display = "block";
+    endTimeDisplay.style.display = "block";
+
+    updateDurationOptions();
+
+    startTime.addEventListener("change", updateDurationOptions);
+    durationSelect.addEventListener("change", updateEndTime);
 
   } else if (typeId === 3) {
     // 教室
@@ -204,12 +230,11 @@ function applyRules() {
     if (!dateStr) return;
 
     const d = new Date(dateStr);
-    const dow = d.getDay(); // 0:日,1:月,2:火,3:水,4:木,5:金,6:土
+    const dow = d.getDay();
 
     startTime.innerHTML = "";
 
     if (dow === 2 || dow === 4) {
-      // 火・木：16,17,18
       ["16:00", "17:00", "18:00"].forEach(t => {
         const opt = document.createElement("option");
         opt.value = t;
@@ -217,7 +242,6 @@ function applyRules() {
         startTime.appendChild(opt);
       });
     } else if (dow === 6) {
-      // 土：12,13,14,16,17,18
       ["12:00", "13:00", "14:00", "16:00", "17:00", "18:00"].forEach(t => {
         const opt = document.createElement("option");
         opt.value = t;
@@ -225,7 +249,6 @@ function applyRules() {
         startTime.appendChild(opt);
       });
     } else {
-      // 他の曜日は休み
       const opt = document.createElement("option");
       opt.value = "";
       opt.textContent = "この曜日は教室休みです";
@@ -234,7 +257,7 @@ function applyRules() {
 
   } else if (typeId === 4) {
     // 銃器保管
-    const startList = generateTimes(10, 20, true); // 20:30まで
+    const startList = generateTimes(10, 20, true);
     startList.forEach(t => {
       const opt = document.createElement("option");
       opt.value = t;
@@ -242,6 +265,61 @@ function applyRules() {
       startTime.appendChild(opt);
     });
   }
+}
+
+// AR/AP・BR 利用時間の制限
+function updateDurationOptions() {
+  const start = document.getElementById("startTime").value;
+  const durationSelect = document.getElementById("durationSelect");
+  const endTimeDisplay = document.getElementById("endTimeDisplay");
+
+  durationSelect.innerHTML = "";
+  endTimeDisplay.textContent = "";
+
+  if (!start) return;
+
+  const [h, m] = start.split(":").map(Number);
+  const startDate = new Date();
+  startDate.setHours(h, m, 0);
+
+  const closing = new Date(startDate);
+  closing.setHours(21, 0, 0);
+
+  const maxHours = Math.floor((closing - startDate) / (60 * 60 * 1000));
+
+  for (let i = 1; i <= Math.min(maxHours, 5); i++) {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = `${i}時間`;
+    durationSelect.appendChild(opt);
+  }
+
+  updateEndTime();
+}
+
+// AR/AP・BR 終了時間計算
+function updateEndTime() {
+  const start = document.getElementById("startTime").value;
+  const duration = Number(document.getElementById("durationSelect").value);
+  const endTimeDisplay = document.getElementById("endTimeDisplay");
+
+  if (!start || !duration) return;
+
+  const [h, m] = start.split(":").map(Number);
+  const startDate = new Date();
+  startDate.setHours(h, m, 0);
+
+  let endDate = new Date(startDate.getTime() + duration * 60 * 60 * 1000);
+
+  const closing = new Date(startDate);
+  closing.setHours(21, 0, 0);
+
+  if (endDate > closing) endDate = closing;
+
+  endTimeDisplay.textContent = endDate.toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 // 予約送信
@@ -260,28 +338,15 @@ async function reserve() {
   let endStr = "";
 
   if (typeId === 1 || typeId === 2) {
-    // AR/AP・BR：開始＋利用時間（21:00超えないように）
-    if (!duration) {
-      result.textContent = "利用時間を選択してください。";
-      return;
-    }
-    const startDate = new Date(`${date} ${start}`);
-    let endDate = new Date(startDate.getTime() + duration * 60 * 60 * 1000);
-
-    const closing = new Date(startDate);
-    closing.setHours(21, 0, 0);
-    if (endDate > closing) endDate = closing;
-
-    endStr = endDate.toISOString().slice(0, 16).replace("T", " ");
+    const end = document.getElementById("endTimeDisplay").textContent;
+    endStr = `${date} ${end}`;
 
   } else if (typeId === 3) {
-    // 教室：1時間固定
     const startDate = new Date(`${date} ${start}`);
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
     endStr = endDate.toISOString().slice(0, 16).replace("T", " ");
 
   } else if (typeId === 4) {
-    // 銃器保管：15分固定
     const startDate = new Date(`${date} ${start}`);
     const endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
     endStr = endDate.toISOString().slice(0, 16).replace("T", " ");
