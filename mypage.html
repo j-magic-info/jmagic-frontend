@@ -115,6 +115,7 @@
   <div class="section-title">会員情報</div>
 
   <div id="userInfoBox">
+    <div><strong>ログインID（メールアドレス）：</strong> <span id="loginIdDisplay"></span></div>
     <div><strong>氏名：</strong> <span id="nameDisplay"></span></div>
     <div><strong>電話番号：</strong> <span id="phoneDisplay"></span></div>
   </div>
@@ -127,7 +128,6 @@
     予約フォームへ進む
   </button>
 
-  <!-- ログアウトボタン -->
   <button class="logout-btn" onclick="logout()">
     ログアウト
   </button>
@@ -177,6 +177,8 @@ async function loadUser() {
   }
 
   const data = await res.json();
+
+  document.getElementById("loginIdDisplay").textContent = data.login_id;
   document.getElementById("nameDisplay").textContent = data.name;
   document.getElementById("phoneDisplay").textContent = data.phone;
 }
