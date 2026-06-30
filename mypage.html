@@ -143,7 +143,9 @@
 
 <script>
 const API_BASE = "https://jmagic-fastapi.onrender.com";
-const token = localStorage.getItem("token");
+
+// ★ login.html が保存した access_token を正しく取得
+const token = localStorage.getItem("access_token");
 
 // 認証チェック
 if (!token) {
@@ -156,8 +158,14 @@ async function loadUser() {
   const res = await fetch(`${API_BASE}/me`, {
     headers: { "Authorization": `Bearer ${token}` }
   });
-  const data = await res.json();
 
+  if (!res.ok) {
+    alert("ログインが必要です。");
+    location.href = "login.html";
+    return;
+  }
+
+  const data = await res.json();
   document.getElementById("name").value = data.name;
   document.getElementById("phone").value = data.phone;
 }
