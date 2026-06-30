@@ -59,6 +59,23 @@
       background: #F0F0F0;
     }
 
+    .logout-btn {
+      background: #FF0000;
+      color: #FFFFFF;
+      border: none;
+      margin-top: 25px;
+      padding: 14px;
+      width: 100%;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .logout-btn:hover {
+      background: #CC0000;
+    }
+
     .reservation-item {
       border: 1px solid #000000;
       padding: 10px;
@@ -110,6 +127,11 @@
     予約フォームへ進む
   </button>
 
+  <!-- ログアウトボタン -->
+  <button class="logout-btn" onclick="logout()">
+    ログアウト
+  </button>
+
   <!-- 未来の予約一覧 -->
   <div class="section-title">未来の予約一覧</div>
   <div id="futureReservations"></div>
@@ -129,6 +151,17 @@ const token = localStorage.getItem("access_token");
 if (!token) {
   alert("ログインが必要です。");
   location.href = "login.html";
+}
+
+// ログアウト処理
+function logout() {
+  const ok = confirm("本当にログアウトしますか？");
+
+  if (ok) {
+    localStorage.removeItem("access_token");
+    alert("ログアウトしました。");
+    location.href = "login.html";
+  }
 }
 
 // 会員情報読み込み（表示のみ）
