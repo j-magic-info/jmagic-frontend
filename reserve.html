@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>予約ページ</title>
 
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
   <style>
     body {
       font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
@@ -35,7 +37,7 @@
       color: #000000;
     }
 
-    select, input[type="datetime-local"] {
+    select, input[type="text"] {
       width: 100%;
       padding: 12px;
       font-size: 16px;
@@ -92,10 +94,13 @@
   <select id="reservationType"></select>
 
   <label>開始日時</label>
-  <input type="datetime-local" id="startDatetime">
+  <input type="text" id="startDatetime">
 
-  <label>終了日時</label>
-  <input type="datetime-local" id="endDatetime">
+  <label id="durationLabel">利用時間（AR/AP・BRのみ）</label>
+  <select id="durationSelect"></select>
+
+  <label id="endLabel">終了時刻</label>
+  <div id="endTimeDisplay" style="font-weight:bold; font-size:18px;"></div>
 
   <button onclick="reserve()">予約する</button>
 
@@ -106,93 +111,186 @@
   <p id="result"></p>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
 <script>
 const API_BASE = "https://jmagic-fastapi.onrender.com";
-
-// JWT チェック
 const token = localStorage.getItem("access_token");
-if (!token) {
-  window.location.href = "login.html";
-}
 
-// 予約種別を読み込む（★ Authorization を追加）
+// flatpickr（予約不可日：毎週月曜）
+flatpickr("#startDatetime", {
+  enableTime: true,
+  dateFormat: "Y-m-d H:i",
+  minDate: "today",
+  disable: [
+    function(date) {
+      return date.getDay() === 1; // 月曜
+    }
+  ]
+});
+
+// 予約種別読み込み
 async function loadReservationTypes() {
   const select = document.getElementById("reservationType");
   select.innerHTML = "<option>読み込み中...</option>";
 
-  try {
-    const res = await fetch(`${API_BASE}/reservation-types`, {
-      headers: {
-        "Authorization": "Bearer " + token
+  const res = await fetch(`${API_BASE}/reservation-types`, {
+    headers: { "Authorization": "Bearer " + token }
+  });
+
+  const data = await res.json();
+  select.innerHTML = "";
+
+  data.forEach(type => {
+    const option = document.createElement("option");
+    option.value = type.id;
+    option.textContent = type.name;
+    select.appendChild(option);
+  });
+
+  select.addEventListener("change", applyRules);
+  applyRules();
+}
+
+// 予約種別ごとのルール適用
+function applyRules() {
+  const typeId = Number(document.getElementById("reservationType").value);
+  const durationSelect = document.getElementById("durationSelect");
+  const durationLabel = document.getElementById("durationLabel");
+  const endLabel = document.getElementById("endLabel");
+  const endTimeDisplay = document.getElementById("endTimeDisplay");
+
+  durationSelect.style.display = "none";
+  durationLabel.style.display = "none";
+  endLabel.style.display = "none";
+  endTimeDisplay.style.display = "none";
+
+  if (typeId === 1 || typeId === 2) {
+    // AR/AP・BR
+    durationSelect.style.display = "block";
+    durationLabel.style.display = "block";
+    endLabel.style.display = "block";
+    endTimeDisplay.style.display = "block";
+
+    durationSelect.innerHTML = "";
+    for (let h = 1; h <= 5; h++) {
+      const opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = `${h}時間`;
+      durationSelect.appendChild(opt);
+    }
+
+    document.getElementById("startDatetime")._flatpickr.set({
+      minTime: "10:00",
+      maxTime: "20:00"
+    });
+
+  } else if (typeId === 3) {
+    // 射撃教室
+    durationSelect.style.display = "none";
+    durationLabel.style.display = "none";
+
+    document.getElementById("startDatetime")._flatpickr.set({
+      enableTime: false,
+      dateFormat: "Y-m-d",
+      onChange: function(selectedDates, dateStr) {
+        const times = ["10:00", "13:00", "15:00"];
+        const t = prompt("開始時間を選択：10:00 / 13:00 / 15:00");
+        if (times.includes(t)) {
+          document.getElementById("startDatetime").value = dateStr + " " + t;
+        }
       }
     });
 
-    if (!res.ok) {
-      throw new Error("APIエラー");
-    }
+  } else if (typeId === 4) {
+    // 銃器保管
+    durationSelect.style.display = "none";
+    durationLabel.style.display = "none";
 
-    const data = await res.json();
-    select.innerHTML = "";
-
-    data.forEach(type => {
-      const option = document.createElement("option");
-      option.value = type.id;
-      option.textContent = type.name;
-      select.appendChild(option);
+    document.getElementById("startDatetime")._flatpickr.set({
+      minTime: "10:00",
+      maxTime: "20:30"
     });
-
-  } catch (error) {
-    console.error(error);
-    select.innerHTML = "<option>読み込み失敗</option>";
   }
 }
 
+// 終了時刻計算（AR/AP・BR）
+document.getElementById("startDatetime").addEventListener("change", () => {
+  const typeId = Number(document.getElementById("reservationType").value);
+  if (typeId !== 1 && typeId !== 2) return;
+
+  const start = document.getElementById("startDatetime").value;
+  const duration = Number(document.getElementById("durationSelect").value);
+
+  if (!start || !duration) return;
+
+  const startDate = new Date(start.replace(/-/g, "/"));
+  const endDate = new Date(startDate.getTime() + duration * 60 * 60 * 1000);
+
+  // 21:00 を超えたら強制調整
+  const closing = new Date(startDate);
+  closing.setHours(21, 0, 0);
+
+  if (endDate > closing) endDate = closing;
+
+  const endStr = endDate.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("endTimeDisplay").textContent = endStr;
+});
+
 // 予約送信
 async function reserve() {
-  const typeId = document.getElementById("reservationType").value;
+  const typeId = Number(document.getElementById("reservationType").value);
   const start = document.getElementById("startDatetime").value;
-  const end = document.getElementById("endDatetime").value;
   const result = document.getElementById("result");
 
-  if (!typeId || !start || !end) {
-    result.textContent = "すべての項目を入力してください。";
+  if (!start) {
+    result.textContent = "開始日時を入力してください。";
     return;
   }
 
-  const startFormatted = start.replace("T", " ");
-  const endFormatted = end.replace("T", " ");
+  let end = "";
 
-  try {
-    const res = await fetch(`${API_BASE}/reserve`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + token
-      },
-      body: JSON.stringify({
-        reservation_type_id: Number(typeId),
-        start_datetime: startFormatted,
-        end_datetime: endFormatted
-      })
-    });
-
-    const data = await res.json();
-
-    if (res.ok && data.success) {
-      result.style.color = "#00AA00";
-      result.textContent = "予約が完了しました！";
-
-      setTimeout(() => {
-        window.location.href = "mypage.html";
-      }, 1200);
-
-    } else {
-      result.style.color = "#FF0000";
-      result.textContent = "予約失敗：" + JSON.stringify(data.detail || data.message);
+  if (typeId === 1 || typeId === 2) {
+    end = document.getElementById("endTimeDisplay").textContent;
+    if (!end) {
+      result.textContent = "終了時刻が計算できません。";
+      return;
     }
+    end = start.split(" ")[0] + " " + end;
+  } else if (typeId === 3) {
+    // 教室：固定1時間
+    const startDate = new Date(start.replace(/-/g, "/"));
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+    end = endDate.toISOString().slice(0, 16).replace("T", " ");
+  } else if (typeId === 4) {
+    // 保管：固定15分
+    const startDate = new Date(start.replace(/-/g, "/"));
+    const endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
+    end = endDate.toISOString().slice(0, 16).replace("T", " ");
+  }
 
-  } catch (error) {
-    result.textContent = "通信エラー：" + error;
+  const res = await fetch(`${API_BASE}/reserve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify({
+      reservation_type_id: typeId,
+      start_datetime: start.replace("T", " "),
+      end_datetime: end
+    })
+  });
+
+  const data = await res.json();
+
+  if (res.ok && data.success) {
+    result.style.color = "#00AA00";
+    result.textContent = "予約が完了しました！";
+    setTimeout(() => location.href = "mypage.html", 1200);
+  } else {
+    result.style.color = "#FF0000";
+    result.textContent = "予約失敗：" + JSON.stringify(data.detail || data.message);
   }
 }
 
