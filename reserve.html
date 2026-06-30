@@ -93,14 +93,14 @@
   <label>予約種別</label>
   <select id="reservationType"></select>
 
-  <label>開始日時</label>
-  <input type="text" id="startDatetime">
+  <label>日付</label>
+  <input type="text" id="datePicker">
 
-  <label id="durationLabel">利用時間（AR/AP・BRのみ）</label>
-  <select id="durationSelect"></select>
+  <label id="startLabel">開始時刻</label>
+  <select id="startTime"></select>
 
   <label id="endLabel">終了時刻</label>
-  <div id="endTimeDisplay" style="font-weight:bold; font-size:18px;"></div>
+  <select id="endTime"></select>
 
   <button onclick="reserve()">予約する</button>
 
@@ -117,17 +117,28 @@
 const API_BASE = "https://jmagic-fastapi.onrender.com";
 const token = localStorage.getItem("access_token");
 
-// flatpickr（予約不可日：毎週月曜）
-flatpickr("#startDatetime", {
-  enableTime: true,
-  dateFormat: "Y-m-d H:i",
+// flatpickr（日付のみ）
+flatpickr("#datePicker", {
+  dateFormat: "Y-m-d",
   minDate: "today",
   disable: [
     function(date) {
-      return date.getDay() === 1; // 月曜
+      return date.getDay() === 1; // 月曜休み
     }
   ]
 });
+
+// 30分刻みの時間リスト生成
+function generateTimes(startHour, endHour, include2030=false) {
+  const times = [];
+  for (let h = startHour; h <= endHour; h++) {
+    ["00", "30"].forEach(m => {
+      if (h === 20 && m === "30" && !include2030) return;
+      times.push(`${String(h).padStart(2,"0")}:${m}`);
+    });
+  }
+  return times;
+}
 
 // 予約種別読み込み
 async function loadReservationTypes() {
@@ -152,119 +163,95 @@ async function loadReservationTypes() {
   applyRules();
 }
 
-// 予約種別ごとのルール適用
+// 種別ごとのルール適用
 function applyRules() {
   const typeId = Number(document.getElementById("reservationType").value);
-  const durationSelect = document.getElementById("durationSelect");
-  const durationLabel = document.getElementById("durationLabel");
+  const startTime = document.getElementById("startTime");
+  const endTime = document.getElementById("endTime");
   const endLabel = document.getElementById("endLabel");
-  const endTimeDisplay = document.getElementById("endTimeDisplay");
 
-  durationSelect.style.display = "none";
-  durationLabel.style.display = "none";
-  endLabel.style.display = "none";
-  endTimeDisplay.style.display = "none";
+  startTime.innerHTML = "";
+  endTime.innerHTML = "";
 
   if (typeId === 1 || typeId === 2) {
     // AR/AP・BR
-    durationSelect.style.display = "block";
-    durationLabel.style.display = "block";
-    endLabel.style.display = "block";
-    endTimeDisplay.style.display = "block";
+    const startList = generateTimes(10, 20, false);
+    const endList = generateTimes(10, 21, false);
 
-    durationSelect.innerHTML = "";
-    for (let h = 1; h <= 5; h++) {
+    startList.forEach(t => {
       const opt = document.createElement("option");
-      opt.value = h;
-      opt.textContent = `${h}時間`;
-      durationSelect.appendChild(opt);
-    }
-
-    document.getElementById("startDatetime")._flatpickr.set({
-      minTime: "10:00",
-      maxTime: "20:00"
+      opt.value = t;
+      opt.textContent = t;
+      startTime.appendChild(opt);
     });
+
+    endList.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      endTime.appendChild(opt);
+    });
+
+    endLabel.style.display = "block";
+    endTime.style.display = "block";
 
   } else if (typeId === 3) {
     // 射撃教室
-    durationSelect.style.display = "none";
-    durationLabel.style.display = "none";
-
-    document.getElementById("startDatetime")._flatpickr.set({
-      enableTime: false,
-      dateFormat: "Y-m-d",
-      onChange: function(selectedDates, dateStr) {
-        const times = ["10:00", "13:00", "15:00"];
-        const t = prompt("開始時間を選択：10:00 / 13:00 / 15:00");
-        if (times.includes(t)) {
-          document.getElementById("startDatetime").value = dateStr + " " + t;
-        }
-      }
+    startTime.innerHTML = "";
+    ["10:00", "13:00", "15:00"].forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      startTime.appendChild(opt);
     });
+
+    endLabel.style.display = "none";
+    endTime.style.display = "none";
 
   } else if (typeId === 4) {
     // 銃器保管
-    durationSelect.style.display = "none";
-    durationLabel.style.display = "none";
+    const startList = generateTimes(10, 20, true);
 
-    document.getElementById("startDatetime")._flatpickr.set({
-      minTime: "10:00",
-      maxTime: "20:30"
+    startList.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      startTime.appendChild(opt);
     });
+
+    endLabel.style.display = "none";
+    endTime.style.display = "none";
   }
 }
-
-// 終了時刻計算（AR/AP・BR）
-document.getElementById("startDatetime").addEventListener("change", () => {
-  const typeId = Number(document.getElementById("reservationType").value);
-  if (typeId !== 1 && typeId !== 2) return;
-
-  const start = document.getElementById("startDatetime").value;
-  const duration = Number(document.getElementById("durationSelect").value);
-
-  if (!start || !duration) return;
-
-  const startDate = new Date(start.replace(/-/g, "/"));
-  const endDate = new Date(startDate.getTime() + duration * 60 * 60 * 1000);
-
-  // 21:00 を超えたら強制調整
-  const closing = new Date(startDate);
-  closing.setHours(21, 0, 0);
-
-  if (endDate > closing) endDate = closing;
-
-  const endStr = endDate.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-  document.getElementById("endTimeDisplay").textContent = endStr;
-});
 
 // 予約送信
 async function reserve() {
   const typeId = Number(document.getElementById("reservationType").value);
-  const start = document.getElementById("startDatetime").value;
+  const date = document.getElementById("datePicker").value;
+  const start = document.getElementById("startTime").value;
   const result = document.getElementById("result");
 
-  if (!start) {
-    result.textContent = "開始日時を入力してください。";
+  if (!date || !start) {
+    result.textContent = "日付と開始時刻を入力してください。";
     return;
   }
 
   let end = "";
 
   if (typeId === 1 || typeId === 2) {
-    end = document.getElementById("endTimeDisplay").textContent;
+    end = document.getElementById("endTime").value;
     if (!end) {
-      result.textContent = "終了時刻が計算できません。";
+      result.textContent = "終了時刻を選択してください。";
       return;
     }
-    end = start.split(" ")[0] + " " + end;
   } else if (typeId === 3) {
     // 教室：固定1時間
-    const startDate = new Date(start.replace(/-/g, "/"));
+    const startDate = new Date(`${date} ${start}`);
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
     end = endDate.toISOString().slice(0, 16).replace("T", " ");
   } else if (typeId === 4) {
     // 保管：固定15分
-    const startDate = new Date(start.replace(/-/g, "/"));
+    const startDate = new Date(`${date} ${start}`);
     const endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
     end = endDate.toISOString().slice(0, 16).replace("T", " ");
   }
@@ -277,7 +264,7 @@ async function reserve() {
     },
     body: JSON.stringify({
       reservation_type_id: typeId,
-      start_datetime: start.replace("T", " "),
+      start_datetime: `${date} ${start}`,
       end_datetime: end
     })
   });
