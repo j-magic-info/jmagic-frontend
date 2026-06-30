@@ -33,7 +33,7 @@
       margin-bottom: 5px;
     }
 
-    input[type="text"], input[type="tel"] {
+    input[type="text"], input[type="tel"], input[type="email"] {
       width: 100%;
       padding: 12px;
       font-size: 16px;
@@ -85,6 +85,9 @@
 <div class="container">
   <h2>会員情報編集</h2>
 
+  <label>ログインID（メールアドレス）</label>
+  <input type="email" id="loginId">
+
   <label>氏名</label>
   <input type="text" id="name">
 
@@ -117,12 +120,14 @@ async function loadUser() {
   });
 
   const data = await res.json();
+  document.getElementById("loginId").value = data.login_id;
   document.getElementById("name").value = data.name;
   document.getElementById("phone").value = data.phone;
 }
 
 // 更新処理
 async function updateUser() {
+  const login_id = document.getElementById("loginId").value;
   const name = document.getElementById("name").value;
   const phone = document.getElementById("phone").value;
 
@@ -132,13 +137,12 @@ async function updateUser() {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`
     },
-    body: JSON.stringify({ name, phone })
+    body: JSON.stringify({ login_id, name, phone })
   });
 
   const data = await res.json();
   document.getElementById("result").textContent = data.message || "更新しました！";
 
-  // 更新後マイページへ戻る
   setTimeout(() => {
     location.href = "mypage.html";
   }, 1000);
