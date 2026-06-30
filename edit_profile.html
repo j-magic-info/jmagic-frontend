@@ -141,8 +141,15 @@ async function updateUser() {
   });
 
   const data = await res.json();
+
+  // ★ 新しい token を保存（ログインID変更後の認証維持に必須）
+  if (data.token) {
+    localStorage.setItem("access_token", data.token);
+  }
+
   document.getElementById("result").textContent = data.message || "更新しました！";
 
+  // 少し待ってからマイページへ戻る（反映のため）
   setTimeout(() => {
     location.href = "mypage.html";
   }, 1000);
